@@ -6,7 +6,7 @@ import { join, dirname, basename, extname, resolve } from "path";
 import { existsSync } from "fs";
 import { parseArgs } from "util";
 
-const VERSION = "1.0.2";
+const VERSION = "1.1.0";
 const BANNER = `
                            _    _ ___ _
   _ __  ___ _ _ _ __  __ _(_)__| | , |_)_ __  __ _
@@ -30,6 +30,7 @@ Options:
   --b64           Embed as base64 data URIs (default)
   --files         Export images to ./mermaid/ folder
   --scale <n>     Device scale factor (default: 2)
+  -q, --quality <n> JPEG quality 1-100 (default: 75)
   -v, --version   Show version
   -h, --help      Show help
 
@@ -51,6 +52,7 @@ const { values } = parseArgs({
     b64: { type: "boolean" },
     files: { type: "boolean" },
     scale: { type: "string" },
+    quality: { type: "string", short: "q" },
     version: { type: "boolean", short: "v" },
     help: { type: "boolean", short: "h" },
   },
@@ -89,6 +91,13 @@ if (Number.isNaN(rawScale)) {
   process.exit(1);
 }
 const scale = Math.max(1, Math.min(4, rawScale));
+
+const rawQuality = parseInt(values.quality ?? "75", 10);
+if (Number.isNaN(rawQuality)) {
+  console.error("Error: --quality must be a number (1-100)");
+  process.exit(1);
+}
+const quality = Math.max(1, Math.min(100, rawQuality));
 
 if (!existsSync(mdPath)) {
   console.error(`Error: path not found: ${mdPath}`);
@@ -166,7 +175,7 @@ async function renderDiagram(
   if (fmt === "jpg") {
     const el = await page.$("svg");
     if (!el) throw new Error("SVG element not found after rendering");
-    jpg = (await el.screenshot({ type: "jpeg", quality: 92 })) as Buffer;
+    jpg = (await el.screenshot({ type: "jpeg", quality })) as Buffer;
   }
 
   return { svg: svgHtml, jpg };
