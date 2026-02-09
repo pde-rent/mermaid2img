@@ -8,11 +8,11 @@ import { parseArgs } from "util";
 
 const VERSION = "1.0.2";
 const BANNER = `
-                                    _     ___  _
-   _ __  ___ _ _ _ __  __ _(_)__| |__ )|(_)_ __  __ _
-  | '  \\/ -_) '_| '  \\/ _\` | / _|  _/ /| | '  \\/ _\` |
-  |_|_|_\\___|_| |_|_|_\\__,_|_\\__|_|/_/ |_|_|_|_\\__, |
-                     diagrams to images          |___/
+                           _    _ ___ _
+  _ __  ___ _ _ _ __  __ _(_)__| | , |_)_ __  __ _
+ | '  \\/ -_) '_| '  \\/ _\` | / _\` |7 /| | '  \\/ _\` |
+ |_|_|_\\___|_| |_|_|_\\__,_|_\\__,_/___|_|_|_|_\\__, |
+                          diagrams to images |___/
 `;
 const MERMAID_CDN =
   "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
