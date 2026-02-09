@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 
 import { chromium, type Browser, type Page } from "playwright";
-import { readFile, writeFile, mkdir } from "fs/promises";
+import { readFile, writeFile, mkdir, readdir, stat } from "fs/promises";
 import { join, dirname, basename, extname, resolve } from "path";
 import { existsSync } from "fs";
 import { parseArgs } from "util";
 
-const VERSION = "1.0.0";
+const VERSION = "1.0.1";
 const MERMAID_CDN =
   "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
 const MERMAID_RE = /^```mermaid[^\n]*\n([\s\S]*?)^```\s*$/gm;
@@ -14,10 +14,10 @@ const MERMAID_RE = /^```mermaid[^\n]*\n([\s\S]*?)^```\s*$/gm;
 function help(): void {
   console.log(`mermaid2img v${VERSION} — render mermaid diagrams in markdown
 
-Usage: mermaid2img --md <file> [options]
+Usage: mermaid2img --md <path> [options]
 
 Options:
-  --md <path>     Markdown file to process (required)
+  --md <path>     Markdown file or folder to process (required)
   --svg           Inline SVG in markdown
   --jpg           JPEG images (default)
   --b64           Embed as base64 data URIs (default)
@@ -26,10 +26,11 @@ Options:
   -v, --version   Show version
   -h, --help      Show help
 
-Output: <name>_mermaid2<fmt>.md in the same directory.
+Output: <name>_mermaid2<fmt>.md alongside each source file.
 
 Examples:
   mermaid2img --md README.md
+  mermaid2img --md docs/
   mermaid2img --md README.md --svg
   mermaid2img --md README.md --jpg --files`);
 }
@@ -83,8 +84,27 @@ if (Number.isNaN(rawScale)) {
 const scale = Math.max(1, Math.min(4, rawScale));
 
 if (!existsSync(mdPath)) {
-  console.error(`Error: file not found: ${mdPath}`);
+  console.error(`Error: path not found: ${mdPath}`);
   process.exit(1);
+}
+
+async function collectMarkdownFiles(dir: string): Promise<string[]> {
+  const files: string[] = [];
+  const entries = await readdir(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await collectMarkdownFiles(full)));
+    } else if (
+      entry.name.endsWith(".md") &&
+      !entry.name.includes("_mermaid2")
+    ) {
+      files.push(full);
+    }
+  }
+
+  return files;
 }
 
 async function initPage(browser: Browser): Promise<Page> {
@@ -145,69 +165,57 @@ async function renderDiagram(
   return { svg: svgHtml, jpg };
 }
 
-async function main(): Promise<void> {
-  const content = await readFile(mdPath, "utf-8");
+async function processFile(page: Page, filePath: string): Promise<boolean> {
+  const content = await readFile(filePath, "utf-8");
   const matches = [...content.matchAll(MERMAID_RE)];
 
-  if (!matches.length) {
-    console.log("No mermaid diagrams found.");
-    return;
-  }
+  if (!matches.length) return false;
 
-  const dir = dirname(mdPath);
-  const ext = extname(mdPath);
-  const base = basename(mdPath, ext);
+  const dir = dirname(filePath);
+  const ext = extname(filePath);
+  const base = basename(filePath, ext);
   const mermaidDir = join(dir, "mermaid");
 
-  console.log(`Found ${matches.length} diagram(s). Launching browser...`);
-  const browser = await chromium.launch({ headless: true });
+  console.log(`\n${basename(filePath)}: ${matches.length} diagram(s)`);
+
+  if (fmt === "jpg" && mode === "files") {
+    await mkdir(mermaidDir, { recursive: true });
+  }
 
   let result = content;
   let failures = 0;
 
-  try {
-    const page = await initPage(browser);
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const match = matches[i];
+    const code = match[1].trim();
+    const start = match.index!;
+    const end = start + match[0].length;
 
-    if (fmt === "jpg" && mode === "files") {
-      await mkdir(mermaidDir, { recursive: true });
-    }
+    process.stdout.write(`  [${i + 1}/${matches.length}] `);
 
-    for (let i = matches.length - 1; i >= 0; i--) {
-      const match = matches[i];
-      const code = match[1].trim();
-      const start = match.index!;
-      const end = start + match[0].length;
+    try {
+      const { svg, jpg } = await renderDiagram(page, code);
+      let replacement: string;
 
-      process.stdout.write(`  [${i + 1}/${matches.length}] `);
-
-      try {
-        const { svg, jpg } = await renderDiagram(page, code);
-        let replacement: string;
-
-        if (fmt === "svg") {
-          replacement = `\n${svg}\n`;
-        } else if (!jpg) {
-          throw new Error("Screenshot capture failed");
-        } else if (mode === "b64") {
-          const b64 = jpg.toString("base64");
-          replacement = `![Diagram ${i + 1}](data:image/jpeg;base64,${b64})`;
-        } else {
-          const fname = `${base}-${i + 1}.jpg`;
-          await writeFile(join(mermaidDir, fname), jpg);
-          replacement = `![Diagram ${i + 1}](./mermaid/${fname})`;
-        }
-
-        result = result.slice(0, start) + replacement + result.slice(end);
-        console.log("done");
-      } catch (err) {
-        failures++;
-        console.error(`failed — ${(err as Error).message}`);
+      if (fmt === "svg") {
+        replacement = `\n${svg}\n`;
+      } else if (!jpg) {
+        throw new Error("Screenshot capture failed");
+      } else if (mode === "b64") {
+        const b64 = jpg.toString("base64");
+        replacement = `![Diagram ${i + 1}](data:image/jpeg;base64,${b64})`;
+      } else {
+        const fname = `${base}-${i + 1}.jpg`;
+        await writeFile(join(mermaidDir, fname), jpg);
+        replacement = `![Diagram ${i + 1}](./mermaid/${fname})`;
       }
-    }
 
-    await page.close().catch(() => {});
-  } finally {
-    await browser.close();
+      result = result.slice(0, start) + replacement + result.slice(end);
+      console.log("done");
+    } catch (err) {
+      failures++;
+      console.error(`failed — ${(err as Error).message}`);
+    }
   }
 
   const suffix = fmt === "svg" ? "_mermaid2svg" : "_mermaid2jpg";
@@ -216,10 +224,44 @@ async function main(): Promise<void> {
 
   if (failures > 0) {
     console.warn(
-      `\nWarning: ${failures} diagram(s) failed and were left as raw mermaid blocks.`,
+      `  Warning: ${failures} diagram(s) failed and were left as raw mermaid blocks.`,
     );
   }
-  console.log(`Output: ${outPath}`);
+  console.log(`  -> ${outPath}`);
+  return true;
+}
+
+async function main(): Promise<void> {
+  const info = await stat(mdPath);
+  const files = info.isDirectory()
+    ? await collectMarkdownFiles(mdPath)
+    : [mdPath];
+
+  if (!files.length) {
+    console.log("No markdown files found.");
+    return;
+  }
+
+  console.log(
+    `${files.length} markdown file(s) to scan. Launching browser...`,
+  );
+  const browser = await chromium.launch({ headless: true });
+
+  let processed = 0;
+
+  try {
+    const page = await initPage(browser);
+
+    for (const file of files) {
+      if (await processFile(page, file)) processed++;
+    }
+
+    await page.close().catch(() => {});
+  } finally {
+    await browser.close();
+  }
+
+  console.log(`\nDone. ${processed} file(s) with diagrams rendered.`);
 }
 
 main().catch((err) => {
