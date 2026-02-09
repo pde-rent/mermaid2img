@@ -1,3 +1,11 @@
+```
+                                    _     ___  _
+   _ __  ___ _ _ _ __  __ _(_)__| |__ )|(_)_ __  __ _
+  | '  \/ -_) '_| '  \/ _` | / _|  _/ /| | '  \/ _` |
+  |_|_|_\___|_| |_|_|_\__,_|_\__|_|/_/ |_|_|_|_\__, |
+                     diagrams to images          |___/
+```
+
 # mermaid2img
 
 Render mermaid diagrams in markdown files to images.
