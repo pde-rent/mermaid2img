@@ -1,0 +1,19 @@
+{
+  "name": "mermaid2img",
+  "version": "1.0.0",
+  "description": "Render mermaid diagrams in markdown to images",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "mermaid2img": "./main.ts"
+  },
+  "scripts": {
+    "start": "bun main.ts"
+  },
+  "dependencies": {
+    "playwright": "^1.50.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}

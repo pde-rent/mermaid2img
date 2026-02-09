@@ -1,0 +1,4 @@
+node_modules/
+.DS_Store
+mermaid/
+*_mermaid2*.md
